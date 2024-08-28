@@ -1,12 +1,10 @@
 import handlers.Handlers;
 import handlers.Request;
 
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -48,41 +46,43 @@ public class Server {
     }
 
     private void proceedConnection(Socket socket) {
-        try (final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        try (final var in = new BufferedInputStream(socket.getInputStream());
              final var out = new BufferedOutputStream(socket.getOutputStream())) {
-            // read only request line for simplicity //строка запроса только для чтения, для простоты
-            // must be in form GET /path HTTP/1.1 //должен быть в формате GET /путь HTTP/1.1
-            final var requestLine = in.readLine();
-            final var parts = requestLine.split(" ");
 
-            if (parts.length != 3) {
-                // just close socket
-                socket.close();
-                return;
-            }
+//            final var requestLine = in.readLine();
+//            final var parts = requestLine.split(" ");
+//
+//            if (parts.length != 3) {
+//                // just close socket
+//                socket.close();
+//                return;
+//            }
+//
+//            String method = parts[0];
+//            final String path = parts[1];
+//            Request request = new Request(method, path);
 
-            String method = parts[0];
-            final String path = parts[1];
-            Request request = new Request(method, path);
-
+            Request request = Request.createRequest(in);
             if (request == null || !handlers.containsKey(request.getMethod())) {
-                responseWithoutContent(out, "404", "Not found");
+                responseWithoutContent(out, "400", "Bad request");
+                return;
+            } else {
+                printRequestDebug(request);
             }
 
             Map<String, Handlers> handlerMap = handlers.get(request.getMethod());
-            String requestPath = request.getPath();
+            String requestPath = request.getPath().split("\\?")[0];
             if (handlerMap.containsKey(requestPath)) {
                 Handlers handler = handlerMap.get(requestPath);
                 handler.handle(request, out);
             } else {
-                if (!validPaths.contains(request.getPath())) {
+                if (!validPaths.contains(requestPath)) {
                     responseWithoutContent(out, "404", "Not found");
                 } else {
-                    defaultHandler(out, path);
+                    defaultHandler(out, requestPath);
                 }
-
             }
-        } catch (IOException e) {
+        } catch (IOException | URISyntaxException e) {
             throw new RuntimeException(e);
         }
     }
@@ -91,7 +91,6 @@ public class Server {
         final var filePath = Path.of(".", "public", path);
         final var mimeType = Files.probeContentType(filePath);
 
-        // special case for classic
         if (path.equals("/classic.html")) {
             final var template = Files.readString(filePath);
             final var content = template.replace(
@@ -137,5 +136,21 @@ public class Server {
                         "\r\n"
         ).getBytes());
         out.flush();
+    }
+
+    private void printRequestDebug(Request request) {
+        System.out.println("Request debug information: ");
+        System.out.println("METHOD: " + request.getMethod());
+        System.out.println("PATH: " + request.getPath());
+        System.out.println("HEADERS: " + request.getHeaders());
+        System.out.println("Query Params: ");
+        for (var para : request.getQueryParams()) {
+            System.out.println(para.getName() + " = " + para.getValue());
+        }
+
+        System.out.println("Test for dumb param name: ");
+        System.out.println(request.getQueryParam("YetAnotherDumb").getName());
+        System.out.println("Test for dumb  param  name-value: ");
+        System.out.println(request.getQueryParam("testDebugInfo").getValue());
     }
 }

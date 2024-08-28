@@ -16,6 +16,7 @@ public class Main {
 
         server.addHandler("POST", "/messages", (request, responseStream) -> server.responseWithoutContent(responseStream,
                 "404", "Not found"));
+        //server.addHandler("GET", "/", ((request, responseStream) -> server.defaultHandler(responseStream, "spring.png")));
         server.listen();
 
 
